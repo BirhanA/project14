@@ -1,0 +1,92 @@
+<LoginScreen>:
+    GridLayout:
+        cols: 1
+        padding: 20
+        spacing: 10
+
+        Label:
+            text: "Username"
+            font_name: "AbyssinicaSIL-Regular.ttf"
+        TextInput:
+            id: username
+            multiline: False
+            font_name: "AbyssinicaSIL-Regular.ttf"
+
+        Label:
+            text: "Password"
+            font_name: "AbyssinicaSIL-Regular.ttf"
+        TextInput:
+            id: password
+            password: True
+            multiline: False
+            font_name: "AbyssinicaSIL-Regular.ttf"
+
+        Button:
+            text: "Login"
+            on_press: root.do_login(username.text, password.text)
+
+<MainScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 10
+
+        Label:
+            id: line_display
+            text: root.current_line
+            font_size: 20
+            font_name: "AbyssinicaSIL-Regular.ttf"
+            size_hint_y: 0.2
+            halign: 'center'
+            valign: 'middle'
+            text_size: self.size
+
+        BoxLayout:
+            size_hint_y: 0.1
+            spacing: 5
+            Label:
+                text: "Line Number:"
+                size_hint_x: 0.4
+                font_name: "AbyssinicaSIL-Regular.ttf"
+            TextInput:
+                id: line_number_input
+                multiline: False
+                size_hint_x: 0.4
+                font_name: "AbyssinicaSIL-Regular.ttf"
+            Button:
+                text: "Go"
+                size_hint_x: 0.2
+                on_press: root.go_to_line()
+
+        BoxLayout:
+            size_hint_y: 0.2
+            spacing: 5
+            Button:
+                text: "Prev"
+                on_press: root.prev_line()
+            Button:
+                text: "Next"
+                on_press: root.next_line()
+
+        BoxLayout:
+            size_hint_y: 0.2
+            spacing: 5
+            Button:
+                text: "Start Recording"
+                on_press: root.start_recording()
+            Button:
+                text: "Stop Recording"
+                on_press: root.stop_recording()
+
+        BoxLayout:
+            size_hint_y: 0.2
+            spacing: 5
+            Button:
+                text: "Save Recording"
+                on_press: root.save_recording()
+            Button:
+                text: "Settings"
+                on_press: root.change_settings()
+            Button:
+                text: "Exit"
+                on_press: app.stop()
