@@ -92,6 +92,7 @@
         BoxLayout:
             size_hint_y: 0.2
             spacing: 5
+            # Combined Start/Stop Recording button
             Button:
                 text: "Start Recording" if not root.is_recording else "Stop Recording"
                 on_press: root.start_recording() if not root.is_recording else root.stop_recording()
@@ -102,7 +103,6 @@
         BoxLayout:
             size_hint_y: 0.2
             spacing: 5
-            # Removed the "Settings" button and placed the file selection spinner at the top
             Button:
                 text: "Exit"
                 on_press: app.stop()
