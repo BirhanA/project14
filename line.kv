@@ -1,3 +1,5 @@
+#:kivy 1.0.9
+
 <LoginScreen>:
     GridLayout:
         cols: 1
@@ -30,6 +32,25 @@
         orientation: 'vertical'
         padding: 10
         spacing: 10
+
+        # New section for the file selection spinner
+        BoxLayout:
+            size_hint_y: 0.1 # Adjust height as needed
+            spacing: 5
+            Label:
+                text: "Select Text File:"
+                size_hint_x: 0.4
+                font_name: "AbyssinicaSIL-Regular.ttf"
+                halign: 'right'
+                valign: 'middle'
+                text_size: self.size
+            Spinner:
+                id: file_spinner
+                text: root.selected_text_file # Display the currently selected file
+                values: root.available_text_files # Populate with files from main.py
+                on_text: root.on_text_file_selected(self.text) # Call method when selection changes
+                size_hint_x: 0.6
+                font_name: "AbyssinicaSIL-Regular.ttf" # Apply font to spinner text
 
         Label:
             id: line_display
@@ -72,21 +93,16 @@
             size_hint_y: 0.2
             spacing: 5
             Button:
-                text: "Start Recording"
-                on_press: root.start_recording()
+                text: "Start Recording" if not root.is_recording else "Stop Recording"
+                on_press: root.start_recording() if not root.is_recording else root.stop_recording()
             Button:
-                text: "Stop Recording"
-                on_press: root.stop_recording()
+                text: "Save Recording"
+                on_press: root.save_recording() # This will just print a message as saving is on stop
 
         BoxLayout:
             size_hint_y: 0.2
             spacing: 5
-            Button:
-                text: "Save Recording"
-                on_press: root.save_recording()
-            Button:
-                text: "Settings"
-                on_press: root.change_settings()
+            # Removed the "Settings" button and placed the file selection spinner at the top
             Button:
                 text: "Exit"
                 on_press: app.stop()
