@@ -1,0 +1,53 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Uses the latest stable Ubuntu runner
+    steps:
+    - uses: actions/checkout@v2
+
+    # used to cache dependencies with a timeout
+    - name: Get Date
+      id: get-date
+      run: |
+        echo "::set-output name=date::$(/bin/date -u "+%Y%m%d")"
+      shell: bash
+
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4 # Updated to v4
+      with:
+        path: .buildozer_global
+        key: buildozer-global-v4-${{ hashFiles('buildozer.spec') }}
+
+    - name: Cache Buildozer project directory
+      uses: actions/cache@v4 # Updated to v4
+      with:
+        path: .buildozer
+        key: ${{ runner.os }}-v4-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
+
+    - name: Build Debug with Buildozer
+      uses: ArtemSBulgakov/buildozer-action@v1
+      id: buildozer_debug
+      with:
+        command: buildozer android debug
+        buildozer_version: stable
+
+    - name: Build Release with Buildozer
+      uses: ArtemSBulgakov/buildozer-action@v1
+      id: buildozer_release
+      with:
+        command: buildozer android release
+        buildozer_version: stable
+      env:
+        # This environment variable allows building with 'org.test' domain for private use.
+        # It's recommended to change package.domain in buildozer.spec for public releases.
+        BUILDOZER_ALLOW_ORG_TEST_DOMAIN: 1
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4 # Updated to v4
+      with:
+        name: android-packages
+        path: bin/ # This path will contain both debug and release APKs
