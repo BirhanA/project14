@@ -5,8 +5,12 @@ from kivy.properties import StringProperty, NumericProperty, ListProperty # Adde
 from kivy.core.text import LabelBase
 from plyer import storagepath
 import os
+import traceback # Import traceback for detailed error logging
 
-# Import platform-specific modules for permissions
+# Register font
+LabelBase.register(name="AbyssinicaSIL", fn_regular="fonts/AbyssinicaSIL-Regular.ttf")
+
+# Detect platform
 try:
     from jnius import autoclass
     from android.storage import primary_external_storage_path
@@ -18,10 +22,6 @@ except ImportError:
     import sounddevice as sd
     from scipy.io.wavfile import write
     import numpy as np
-
-
-# Register font
-LabelBase.register(name="AbyssinicaSIL", fn_regular="fonts/AbyssinicaSIL-Regular.ttf")
 
 
 class LoginScreen(Screen):
@@ -48,17 +48,64 @@ class MainScreen(Screen):
     text_files_base_dir = "" # Will store the path to the user's text files directory
 
     def on_pre_enter(self):
-        self.load_lines() # Load the default/previously selected line.txt
+        """
+        Called when the MainScreen is about to become active.
+        Handles initial line loading and Android permission requests.
+        """
+        # Initial load of lines. This will load from bundled line.txt first.
+        # If line.txt is not found, it will set an error message.
+        self.load_lines()
         self.display_line(self.current_index)
+
         if is_android:
+            # Request permissions on Android. File system access (setup/populate)
+            # will happen AFTER permissions are granted in on_permission_callback.
             self.request_android_permissions()
-        
-        # Initialize the directory for user text files and populate the spinner
-        self.setup_text_files_directory()
-        self.populate_text_file_spinner()
+        else:
+            # For desktop, permissions are not an issue, so set up immediately.
+            self.setup_text_files_directory()
+            self.populate_text_file_spinner()
+
+    def request_android_permissions(self):
+        """Requests necessary Android permissions at runtime."""
+        print("Requesting Android permissions...")
+        permissions_to_request = [
+            Permission.RECORD_AUDIO,
+            Permission.WRITE_EXTERNAL_STORAGE,
+            Permission.READ_EXTERNAL_STORAGE # Needed for reading user text files
+        ]
+        request_permissions(permissions_to_request, self.on_permission_callback)
+
+    def on_permission_callback(self, permissions, granted):
+        """
+        Callback method after Android permissions are requested.
+        Only proceeds with file system operations if permissions are granted.
+        """
+        print(f"Permissions callback received. Permissions: {permissions}, Granted: {granted}")
+        if all(granted):
+            print("✅ All required permissions granted. Proceeding with file system setup.")
+            self.setup_text_files_directory()
+            self.populate_text_file_spinner()
+            # After permissions and spinner populated, re-load the selected file.
+            # This ensures user-selected files can be loaded if permissions were just granted.
+            self.load_lines()
+            self.display_line(self.current_index)
+        else:
+            print("❌ Not all required permissions were granted. File operations and recording may not work.")
+            # Update UI to inform the user about permission issues
+            self.lines = ["Permissions denied. Please grant storage and microphone permissions in app settings to use all features."]
+            self.current_line = self.lines[0]
+            self.current_index = 0
+            # Update line number input to reflect the first line
+            if self.ids: # Check if ids are available (might not be during initial setup)
+                self.ids.line_number_input.text = "1" 
+            self.available_text_files = ["Permissions Required"] # Update spinner to reflect state
 
     def setup_text_files_directory(self):
-        """Defines and creates the directory where user-provided text files will be stored."""
+        """
+        Defines and creates the directory where user-provided text files will be stored.
+        This is called *after* permissions are confirmed on Android.
+        """
         if is_android:
             # For Android, use a subfolder in primary external storage (e.g., /storage/emulated/0/RecorderTextFiles)
             self.text_files_base_dir = os.path.join(primary_external_storage_path(), "RecorderTextFiles")
@@ -66,24 +113,39 @@ class MainScreen(Screen):
             # For desktop, use a subfolder in the user's documents directory
             self.text_files_base_dir = os.path.join(storagepath.get_documents_dir() or ".", "RecorderTextFiles")
         
-        os.makedirs(self.text_files_base_dir, exist_ok=True)
-        print(f"Text files directory set to: {self.text_files_base_dir}")
+        try:
+            os.makedirs(self.text_files_base_dir, exist_ok=True)
+            print(f"Text files directory set to: {self.text_files_base_dir}")
+        except Exception as e:
+            print(f"Error creating text files directory: {e}")
+            traceback.print_exc() # Print full traceback for debugging
+            self.lines = [f"Error accessing storage for text files: {e}"]
+            self.current_line = self.lines[0]
 
     def populate_text_file_spinner(self):
-        """Scans the text files directory and populates the spinner with .txt files."""
+        """
+        Scans the text files directory and populates the spinner with .txt files.
+        Only attempts to list directory if it's set and accessible.
+        """
         files = []
-        # Always add the bundled line.txt as an option
-        files.append("line.txt (bundled)") 
+        files.append("line.txt (bundled)") # Always add the bundled line.txt as an option
 
         try:
-            for filename in os.listdir(self.text_files_base_dir):
-                if filename.lower().endswith(".txt"):
-                    files.append(filename)
-            self.available_text_files = sorted(list(set(files))) # Remove duplicates and sort
-            print(f"Available text files for spinner: {self.available_text_files}")
+            # Only attempt to list directory if text_files_base_dir is set and accessible
+            if self.text_files_base_dir and os.path.exists(self.text_files_base_dir):
+                for filename in os.listdir(self.text_files_base_dir):
+                    if filename.lower().endswith(".txt"):
+                        files.append(filename)
+                self.available_text_files = sorted(list(set(files))) # Remove duplicates and sort
+                print(f"Available text files for spinner: {self.available_text_files}")
+            else:
+                print("Text files base directory not set or not accessible yet (permissions pending?).")
+                # Fallback message if directory is not ready/accessible
+                self.available_text_files = ["Permissions Required / Directory not ready"] 
         except Exception as e:
             print(f"Error populating text file spinner: {e}")
-            self.available_text_files = ["No user files found. Add .txt to 'RecorderTextFiles' folder."] # Fallback
+            traceback.print_exc() # Print full traceback for debugging
+            self.available_text_files = ["Error scanning files"] # Fallback
 
     def on_text_file_selected(self, text_file_name):
         """Called when a text file is selected from the spinner."""
@@ -93,45 +155,25 @@ class MainScreen(Screen):
         self.display_line(self.current_index)
         print(f"Selected text file: {self.selected_text_file}")
 
-    def request_android_permissions(self):
-        """Requests necessary Android permissions at runtime."""
-        permissions_to_request = [
-            Permission.RECORD_AUDIO,
-            Permission.WRITE_EXTERNAL_STORAGE,
-            Permission.READ_EXTERNAL_STORAGE # Added READ_EXTERNAL_STORAGE for reading user text files
-        ]
-        request_permissions(permissions_to_request, self.on_permission_callback)
-
-    def on_permission_callback(self, permissions, granted):
-        """Callback after permissions are requested."""
-        if all(granted):
-            print("✅ All required permissions granted.")
-            # Repopulate spinner in case permissions were just granted for file access
-            self.populate_text_file_spinner() 
-        else:
-            print("❌ Not all required permissions were granted. Some features (like recording or file selection) may not work.")
-            # You might want to show a popup to the user here
-            # or disable functionality.
-
     def load_lines(self):
-        """Loads lines from the currently selected text file."""
+        """
+        Loads lines from the currently selected text file.
+        Handles loading from bundled assets or user-provided directory.
+        """
         file_to_load = self.selected_text_file
-        file_path = ""
         
         if file_to_load == "line.txt (bundled)":
-            # Load from bundled assets (assuming line.txt is in the app's root/source.dir)
             try:
-                # Kivy's resource_find can be used for bundled assets, or direct open if in root
-                # For simplicity, direct open works if line.txt is in source.dir
+                # Load from bundled assets (assuming line.txt is in the app's root/source.dir)
                 with open("line.txt", encoding='utf-8') as f:
                     self.lines = [line.strip() for line in f if line.strip()]
                 print(f"Loaded {len(self.lines)} lines from bundled line.txt")
             except Exception as e:
                 print(f"Error loading bundled line.txt: {e}")
-                self.lines = []
-                self.current_line = "Error: Could not load bundled line.txt"
-        else:
-            # Load from the user's text files directory
+                traceback.print_exc()
+                self.lines = ["Error: Could not load bundled line.txt. Ensure it's in your project root."]
+                self.current_line = self.lines[0]
+        elif self.text_files_base_dir and os.path.exists(self.text_files_base_dir): # Only try if base_dir is set and exists
             file_path = os.path.join(self.text_files_base_dir, file_to_load)
             try:
                 with open(file_path, encoding='utf-8') as f:
@@ -139,21 +181,30 @@ class MainScreen(Screen):
                 print(f"Loaded {len(self.lines)} lines from {file_path}")
             except Exception as e:
                 print(f"Error loading text file '{file_to_load}': {e}")
-                self.lines = []
-                self.current_line = f"Error: Could not load {file_to_load}"
+                traceback.print_exc()
+                self.lines = [f"Error: Could not load {file_to_load}. Check file exists and permissions."]
+                self.current_line = self.lines[0]
+        else:
+            # This case handles when a user file is selected but permissions/directory isn't ready
+            self.lines = ["Permissions not granted or file directory not ready. Cannot load user files."]
+            self.current_line = self.lines[0]
         
-        if not self.lines:
+        if not self.lines: # Fallback if lines list is still empty after attempts
             self.lines = ["No lines available. Please add text files to the 'RecorderTextFiles' folder on your device's internal storage."]
             self.current_index = 0
+            self.current_line = self.lines[0]
 
 
     def display_line(self, index):
         if 0 <= index < len(self.lines):
             self.current_line = self.lines[index]
-            self.ids.line_number_input.text = str(index + 1)
+            # Check if ids.line_number_input exists before accessing it
+            if self.ids and 'line_number_input' in self.ids:
+                self.ids.line_number_input.text = str(index + 1)
         else:
             self.current_line = ""
-            self.ids.line_number_input.text = ""
+            if self.ids and 'line_number_input' in self.ids:
+                self.ids.line_number_input.text = ""
 
     def go_to_line(self):
         try:
@@ -210,9 +261,7 @@ class MainScreen(Screen):
                 print(f"🎙️ Android recording started. Saving to: {self.audio_path}")
             except Exception as e:
                 print(f"❌ Android recording error: {e}")
-                # Log the full traceback for more details during debugging
-                import traceback
-                traceback.print_exc()
+                traceback.print_exc() # Print full traceback for debugging
         else:
             try:
                 music_dir = storagepath.get_music_dir() or "."
@@ -226,7 +275,6 @@ class MainScreen(Screen):
                 self.is_recording = True
             except Exception as e:
                 print(f"❌ Desktop recording error: {e}")
-                import traceback
                 traceback.print_exc()
 
     def stop_recording(self):
@@ -243,7 +291,6 @@ class MainScreen(Screen):
                 print(f"✅ Android recording stopped and saved to: {self.audio_path}")
             except Exception as e:
                 print(f"❌ Android stop recording error: {e}")
-                import traceback
                 traceback.print_exc()
         else:
             try:
@@ -260,7 +307,6 @@ class MainScreen(Screen):
                     print("⚠️ No recording buffer found")
             except Exception as e:
                 print(f"❌ Desktop stop recording error: {e}")
-                import traceback
                 traceback.print_exc()
 
     def trim_silence(self, audio, threshold=0.01):
