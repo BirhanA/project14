@@ -57,6 +57,7 @@ class MainScreen(Screen):
         Called when the MainScreen is about to become active.
         Handles initial line loading and Android permission requests.
         """
+        # Load initial lines (will show "Permissions denied" if not granted yet)
         self.load_lines()
         self.display_line(self.current_index)
 
@@ -81,6 +82,7 @@ class MainScreen(Screen):
 
     def _on_permission_callback_deferred(self, permissions, granted):
         """Defer permission callback processing to ensure it runs on the main Kivy thread."""
+        print("Deferring permission callback to main Kivy thread...")
         Clock.schedule_once(lambda dt: self.on_permission_callback(permissions, granted))
 
     def on_permission_callback(self, permissions, granted):
@@ -93,7 +95,8 @@ class MainScreen(Screen):
             print("✅ All required permissions granted. Proceeding with file system setup.")
             self.setup_text_files_directory()
             self.populate_text_file_spinner()
-            self.load_lines() # Reload to pick up user files if permissions were just granted
+            # Reload lines and display after permissions are confirmed and files are scanned
+            self.load_lines() 
             self.display_line(self.current_index)
         else:
             print("❌ Not all required permissions were granted. File operations and recording may not work.")
@@ -103,6 +106,8 @@ class MainScreen(Screen):
             if self.ids and 'line_number_input' in self.ids:
                 self.ids.line_number_input.text = "1"
             self.available_text_files = ["Permissions Required"]
+            # Force update spinner text if permissions are denied
+            self.selected_text_file = self.available_text_files[0] 
 
     def setup_text_files_directory(self):
         """
@@ -122,6 +127,7 @@ class MainScreen(Screen):
             traceback.print_exc()
             self.lines = [f"Error accessing storage for text files: {e}"]
             self.current_line = self.lines[0]
+            self.available_text_files = ["Error accessing storage"] # Update spinner on error
 
     def populate_text_file_spinner(self):
         """
@@ -145,6 +151,11 @@ class MainScreen(Screen):
             print(f"Error populating text file spinner: {e}")
             traceback.print_exc()
             self.available_text_files = ["Error scanning files"]
+        
+        # Ensure selected_text_file is one of the available options, or default
+        if self.selected_text_file not in self.available_text_files:
+            self.selected_text_file = self.available_text_files[0] if self.available_text_files else "No files"
+
 
     def on_text_file_selected(self, text_file_name):
         """Called when a text file is selected from the spinner."""
